@@ -3,7 +3,6 @@
 import argparse
 import datetime
 import sys
-from pathlib import Path
 
 import isodate
 import numpy as np
@@ -24,7 +23,7 @@ from .write_zarr import write_output_zarrs
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
-LOCAL_COPY_STORAGE_PATH = Path("/tmp/{suite_name}-recent")
+LOCAL_COPY_STORAGE_PATH = "/tmp/{suite_name}-recent"
 
 set_local_eccodes_definitions_path()
 
