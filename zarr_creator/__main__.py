@@ -61,7 +61,7 @@ def _setup_argparse():
         "--suite-name",
         help="The suite with corresponding config file to use (e.g. 'ig', 'dini', etc.)",
         choices=["ig", "dini"],
-        required=True,
+        default="dini",
     )
 
     return argparser
