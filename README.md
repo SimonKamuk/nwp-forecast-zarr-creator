@@ -1,19 +1,19 @@
 # NWP Forecast in zarr format
 
-This repository contains the code to process DINI GRIB files into zarr format.
+This repository contains the code to process DINI and IG GRIB files into zarr format.
 
 For local VS Code + Docker development, see [DEVELOPING.md](DEVELOPING.md).
 
 Currently, this writes all pressure-level fields to `pressure_levels.zarr`,
 height-level fields to `height_levels.zarr` and everything else to
 `single_levels.zarr`. We do not currently transfer and convert model-level
-fields. These are written to
+fields. These are written e.g. to
 
 `s3://harmonie-zarr/dini/control/2025-03-03T060000Z/single_levels.zarr`
 
-e.g. the prefix format is:
+The general prefix format is:
 
-`s3://harmonie-zarr/{suite_name}/{member}/{analysis_time}/[part_id}.zarr`
+`s3://harmonie-zarr/{suite_name}/{member}/{analysis_time}/{part_id}.zarr`
 
 
 NB: note that for DINI we have fewer height-levels and so I have only included `50m`, `100m`, `150m` and `250m`. In addition a number of variables aren't in DINI or at least I don't understand what the variables that are there all mean. To see what is included please have a look at [zarr_creator/config.py](zarr_creator/config.py).
@@ -43,8 +43,10 @@ variable.
 2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the target s3 bucket:
 
 ```bash
-uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z
+uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name DINI
 ```
+
+`suite-name` can optionally be set to `DINI` (default) or `IG`
 
 ## Runtime Defaults
 
@@ -61,6 +63,7 @@ before running either script.
 | `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are copied to this temporary working directory before indexing. If unset, files are indexed directly from `SRC_GRIB_ROOT_PATH`. |
 | `MEMBER_ID` | `CONTROL__dmi` | *as script default* | Forecast member identifier in file names. |
 | `MAX_HOUR` | `36` | *as script default* | Maximum forecast hour included by `build_indexes_and_refs.sh` (inclusive, `000..MAX_HOUR`). |
+| `SUITE_NAME` | *unset* | *unset* | Defines the config file to use for converting GRIB files. Valid options are `DINI` and `IG`. Defaults to `DINI` when unset. |
 
 For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
 unset.
@@ -88,7 +91,7 @@ flowchart TB
     C3["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
     C4["zarr_creator"]
     C5["S3 bucket<br/>(final zarr output)"]
-    C6["/tmp/dini-recent<br/>(local zarr copy)"]
+    C6["/tmp/{suite-name}-recent<br/>(local zarr copy)"]
   end
 
   H1 -->|mounted as| C1
@@ -116,92 +119,7 @@ flowchart TB
     C4["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
     C5["zarr_creator"]
     C6["S3 bucket<br/>(final zarr output)"]
-    C7["/tmp/dini-recent<br/>(local zarr copy)"]
-  end
-
-  H1 -->|mounted as| C1
-  H2 -->|mounted as /tmp| C2
-  C1 -->|read by| C3
-  C3 -->|copied to| C2
-  C2 -->|read by for index build| C3
-  C3 -->|writes to| C4
-  C4 -->|read by| C5
-  C5 -->|writes to| C6
-  C5 -->|writes to| C7
-  C7 -->|persisted via /tmp mount| H2
-```
-
-## Runtime Defaults
-
-Shared runtime defaults are defined in `script_defaults.sh`.
-Both `run.sh` and `build_indexes_and_refs.sh` source this file.
-
-You can override any default by exporting the corresponding environment variable
-before running either script.
-
-| Variable | Script default | Default in container | Meaning |
-|---|---|---|---|
-| `SRC_GRIB_ROOT_PATH` | `/mnt/harmonie-data-from-pds/ml` | *as script default* | Path where source GRIB forecast files are read from. |
-| `REFS_ROOT_PATH` | `/home/ec2-user/nwp-forecast-zarr-creator/refs` | `/app/refs` | Directory where gribscan refs are written. |
-| `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are copied to this temporary working directory before indexing. If unset, files are indexed directly from `SRC_GRIB_ROOT_PATH`. |
-| `MEMBER_ID` | `CONTROL__dmi` | *as script default* | Forecast member identifier in file names. |
-| `MAX_HOUR` | `36` | *as script default* | Maximum forecast hour included by `build_indexes_and_refs.sh` (inclusive, `000..MAX_HOUR`). |
-
-For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
-unset.
-
-Example overrides:
-
-```bash
-export MAX_HOUR=12
-export SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator
-./build_indexes_and_refs.sh 2025-02-27T15:00:00Z
-```
-
-Data flow when `SRC_GRIB_TEMP_PATH` is **unset** (default script behavior):
-
-```mermaid
-flowchart TB
-  subgraph H["Host OS"]
-    H1["/mnt/harmonie-data-from-pds/ml<br/>(GRIB files)"]
-    H2["/tmp (optional bind mount target)"]
-  end
-
-  subgraph C["Container"]
-    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
-    C2["build_indexes_and_refs.sh"]
-    C3["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
-    C4["zarr_creator"]
-    C5["S3 bucket<br/>(final zarr output)"]
-    C6["/tmp/dini-recent<br/>(local zarr copy)"]
-  end
-
-  H1 -->|mounted as| C1
-  C1 -->|read by| C2
-  C2 -->|writes to| C3
-  C3 -->|read by| C4
-  C4 -->|writes to| C5
-  C4 -->|writes to| C6
-  C6 -->|can be persisted via /tmp mount| H2
-```
-
-Data flow when `SRC_GRIB_TEMP_PATH` is **set** (copy-before-indexing):
-
-```mermaid
-flowchart TB
-  subgraph H["Host OS"]
-    H1["/mnt/harmonie-data-from-pds/ml<br/>(GRIB files)"]
-    H2["/tmp<br/>(bind mount target)"]
-  end
-
-  subgraph C["Container"]
-    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
-    C2["${SRC_GRIB_TEMP_PATH}<br/>default=unset (prod Docker default=/tmp/nwp-forecast-zarr-creator)"]
-    C3["build_indexes_and_refs.sh"]
-    C4["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
-    C5["zarr_creator"]
-    C6["S3 bucket<br/>(final zarr output)"]
-    C7["/tmp/dini-recent<br/>(local zarr copy)"]
+    C7["/tmp/{suite-name}-recent<br/>(local zarr copy)"]
   end
 
   H1 -->|mounted as| C1
