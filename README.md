@@ -1,19 +1,19 @@
 # NWP Forecast in zarr format
 
-This repository contains the code to process DINI GRIB files into zarr format.
+This repository contains the code to process DINI and IG GRIB files into zarr format.
 
 For local VS Code + Docker development, see [DEVELOPING.md](DEVELOPING.md).
 
 Currently, this writes all pressure-level fields to `pressure_levels.zarr`,
 height-level fields to `height_levels.zarr` and everything else to
 `single_levels.zarr`. We do not currently transfer and convert model-level
-fields. These are written to
+fields. These are written e.g. to
 
 `s3://harmonie-zarr/dini/control/2025-03-03T060000Z/single_levels.zarr`
 
-e.g. the prefix format is:
+The general prefix format is:
 
-`s3://harmonie-zarr/{suite_name}/{member}/{analysis_time}/[part_id}.zarr`
+`s3://harmonie-zarr/{suite_name}/{member}/{analysis_time}/{part_id}.zarr`
 
 
 NB: note that for DINI we have fewer height-levels and so I have only included `50m`, `100m`, `150m` and `250m`. In addition a number of variables aren't in DINI or at least I don't understand what the variables that are there all mean. To see what is included please have a look at [zarr_creator/config.py](zarr_creator/config.py).
@@ -43,8 +43,10 @@ variable.
 2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the target s3 bucket:
 
 ```bash
-uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z
+uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name DINI
 ```
+
+`suite-name` can optionally be set to `DINI` (default) or `IG`
 
 ## Runtime Defaults
 
@@ -61,6 +63,7 @@ before running either script.
 | `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are copied to this temporary working directory before indexing. If unset, files are indexed directly from `SRC_GRIB_ROOT_PATH`. |
 | `MEMBER_ID` | `CONTROL__dmi` | *as script default* | Forecast member identifier in file names. |
 | `MAX_HOUR` | `36` | *as script default* | Maximum forecast hour included by `build_indexes_and_refs.sh` (inclusive, `000..MAX_HOUR`). |
+| `SUITE_NAME` ||| Defines the config file to use for converting GRIB files. Valid options are `DINI` and `IG`. |
 
 For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
 unset.
@@ -173,7 +176,7 @@ flowchart TB
     C3["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
     C4["zarr_creator"]
     C5["S3 bucket<br/>(final zarr output)"]
-    C6["/tmp/dini-recent<br/>(local zarr copy)"]
+    C6["/tmp/{suite-name}-recent<br/>(local zarr copy)"]
   end
 
   H1 -->|mounted as| C1
@@ -201,7 +204,7 @@ flowchart TB
     C4["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
     C5["zarr_creator"]
     C6["S3 bucket<br/>(final zarr output)"]
-    C7["/tmp/dini-recent<br/>(local zarr copy)"]
+    C7["/tmp/{suite-name}-recent<br/>(local zarr copy)"]
   end
 
   H1 -->|mounted as| C1
